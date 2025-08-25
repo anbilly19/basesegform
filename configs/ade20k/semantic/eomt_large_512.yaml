@@ -9,7 +9,7 @@ trainer:
 model:
   class_path: training.mask_classification_semantic.MaskClassificationSemantic
   init_args:
-    attn_mask_annealing_enabled: True
+    attn_mask_annealing_enabled: False
     attn_mask_annealing_start_steps: [6520, 13040, 19560, 26080]
     attn_mask_annealing_end_steps: [13040, 19560, 26080, 32600]
     network:

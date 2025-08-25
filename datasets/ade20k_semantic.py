@@ -19,9 +19,9 @@ class ADE20KSemantic(LightningDataModule):
     def __init__(
         self,
         path,
-        num_workers: int = 4,
-        batch_size: int = 16,
-        img_size: tuple[int, int] = (512, 512),
+        num_workers: int = 1,
+        batch_size: int = 2,
+        img_size: tuple[int, int] = (64, 64),
         num_classes: int = 150,
         color_jitter_enabled=True,
         scale_range=(0.5, 2.0),
