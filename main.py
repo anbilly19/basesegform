@@ -138,7 +138,8 @@ class LightningCLI(cli.LightningCLI):
     def fit(self, model, **kwargs):
         if hasattr(self.trainer.logger.experiment, "log_code"):
             is_gitignored = parse_gitignore(".gitignore")
-            include_fn = lambda path: path.endswith(".py") or path.endswith(".yaml")
+            def include_fn(path):
+                return path.endswith(".py") or path.endswith(".yaml")
             self.trainer.logger.experiment.log_code(
                 ".", include_fn=include_fn, exclude_fn=is_gitignored
             )
