@@ -6,8 +6,8 @@ wandb==0.19.10
 lightning==2.5.1.post0
 transformers==4.51.3
 scipy==1.15.2
-torch==2.7.0
-torchvision==0.22.0
+torch==2.5.1
+torchvision==0.20.1
 ipykernel==6.29.5
 fvcore==0.1.5.post20221221
 torchmetrics==1.7.1

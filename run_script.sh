@@ -1,0 +1,2 @@
+python main.py fit -c configs/ade20k/semantic/eomt_large_512.yaml --trainer.devices 1 --data.batch_size 2  --data.path ../ --compile_disabled
+python main.py fit -c configs/ade20k/semantic/eomt_large_512_swin.yaml --trainer.devices 1 --data.batch_size 2  --data.path ../ --compile_disabled

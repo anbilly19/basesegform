@@ -111,16 +111,16 @@ class LightningModule(lightning.LightningModule):
 
     def configure_optimizers(self):
         encoder_param_names = {
-            n for n, _ in self.network.encoder.backbone.named_parameters()
+            n for n, _ in self.network.encoder.named_parameters()
         }
         backbone_param_groups = []
         other_param_groups = []
-        backbone_blocks = len(self.network.encoder.backbone.blocks)
+        backbone_blocks = len(self.network.encoder.blocks)
         block_i = backbone_blocks
 
         for name, param in reversed(list(self.named_parameters())):
             lr = self.lr
-            if name.replace("network.encoder.backbone.", "") in encoder_param_names:
+            if name.replace("network.encoder.", "") in encoder_param_names:
                 name_list = name.split(".")
                 is_block = False
                 for i, key in enumerate(name_list):
