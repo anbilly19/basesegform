@@ -14,7 +14,7 @@ import logging
 import torch
 import warnings
 from lightning.pytorch import cli
-from lightning.pytorch.callbacks import ModelSummary, LearningRateMonitor
+from lightning.pytorch.callbacks import ModelSummary, LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loops.training_epoch_loop import _TrainingEpochLoop
 from lightning.pytorch.loops.fetchers import _DataFetcher, _DataLoaderIterDataFetcher
 
@@ -130,10 +130,10 @@ class LightningCLI(cli.LightningCLI):
             "model.init_args.network.init_args.encoder.init_args.img_size",
         )
 
-        parser.link_arguments(
-            "model.init_args.ckpt_path",
-            "model.init_args.network.init_args.encoder.init_args.ckpt_path",
-        )
+        # parser.link_arguments(
+        #     "model.init_args.ckpt_path",
+        #     "model.init_args.network.init_args.encoder.init_args.ckpt_path",
+        # )
 
     def fit(self, model, **kwargs):
         if hasattr(self.trainer.logger.experiment, "log_code"):
@@ -161,14 +161,15 @@ def cli_main():
         subclass_mode_model=True,
         subclass_mode_data=True,
         save_config_callback=None,
-        seed_everything_default=0,
+        seed_everything_default=True,
         trainer_defaults={
-            "accelerator":'gpu',
             "precision": "16-mixed",
             "enable_model_summary": False,
             "callbacks": [
                 ModelSummary(max_depth=3),
                 LearningRateMonitor(logging_interval="epoch"),
+                ModelCheckpoint(dirpath="/netscratch/billimoria/"),
+
             ],
             "devices": 'auto',
             "gradient_clip_val": 0.01,

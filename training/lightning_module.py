@@ -33,7 +33,7 @@ import numpy as np
 from torch.nn.functional import interpolate
 from torchvision.transforms.v2.functional import pad
 
-from training.two_stage_warmup_poly_schedule import TwoStageWarmupPolySchedule
+from training.two_stage_warmup_cosine_schedule import TwoStageWarmupCosineSchedule
 
 bold_green = "\033[1;32m"
 reset = "\033[0m"
@@ -140,12 +140,25 @@ class LightningModule(lightning.LightningModule):
         param_groups = backbone_param_groups + other_param_groups
         optimizer = AdamW(param_groups, weight_decay=self.weight_decay)
 
-        scheduler = TwoStageWarmupPolySchedule(
+
+                # scheduler = TwoStageWarmupPolySchedule(
+        #     optimizer,
+        #     num_backbone_params=len(backbone_param_groups),
+        #     warmup_steps=self.warmup_steps,
+        #     total_steps=self.trainer.estimated_stepping_batches,
+        #     poly_power=self.poly_power,
+        # )
+        # scheduler = CosineAnnealingLR(
+        #     optimizer,
+        #     T_max=self.trainer.estimated_stepping_batches,
+        #     eta_min=1e-6,
+        # )
+
+        scheduler = TwoStageWarmupCosineSchedule(
             optimizer,
             num_backbone_params=len(backbone_param_groups),
             warmup_steps=self.warmup_steps,
             total_steps=self.trainer.estimated_stepping_batches,
-            poly_power=self.poly_power,
         )
 
         return {

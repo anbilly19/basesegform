@@ -8,8 +8,10 @@
 
 import torch
 import torch.nn as nn
+from models.cross_attention import CrossAttentionSingleInput
 from models.attention import Attention
-
+from models.layer_scale import LayerScale
+from models.drop_path import DropPath
 import math
 
 from models.scale_block import ScaleBlock
@@ -22,6 +24,7 @@ class EoMT(nn.Module):
         num_classes,
         num_q,
         num_blocks=4,
+        self_a=False,
         masked_attn_enabled=True,
     ):
         super().__init__()
@@ -29,13 +32,11 @@ class EoMT(nn.Module):
         self.num_q = num_q
         self.num_blocks = num_blocks
         self.masked_attn_enabled = masked_attn_enabled
-
         self.register_buffer("attn_mask_probs", torch.ones(num_blocks))
-        self.attn = Attention(
-            dim=self.encoder.embed_dim,
-            num_heads=self.encoder.num_heads
-        )
-        self.q = nn.Embedding(num_q, self.encoder.embed_dim)
+        self.attn = self.get_attention_list(self_a)
+        self.q = nn.Parameter(torch.randn(num_q, self.encoder.embed_dim))
+        self.ls_list = self.get_layer_scale_list()
+        self.dp = DropPath(0.0)
 
         self.class_head = nn.Linear(self.encoder.embed_dim, num_classes + 1)
 
@@ -55,8 +56,47 @@ class EoMT(nn.Module):
             *[ScaleBlock(self.encoder.embed_dim) for _ in range(num_upscale)],
         )
 
+    def get_layer_scale_list(self):
+        ls_list = nn.ModuleList()
+        embed_dim = self.encoder.embed_dim
+        len_blocks = sum(self.encoder.depths)
+        i = 0
+        for d in self.encoder.depths:
+            for _ in range(d):
+                if i >= len_blocks - self.num_blocks:
+                    ls_list.append(LayerScale(embed_dim))
+                i+=1
+            embed_dim = embed_dim * self.encoder.attn_multiplier
+        return ls_list
+    
+    def get_attention_list(self, self_a):
+        attn_list = nn.ModuleList()
+        embed_dim = self.encoder.embed_dim
+        len_blocks = sum(self.encoder.depths)
+        i = 0
+        for d,h in zip(self.encoder.depths,self.encoder.num_heads):
+            for _ in range(d):
+                if i >= len_blocks - self.num_blocks:
+                    if self_a:
+                            
+                        attn_list.append(
+                            Attention(
+                                dim=embed_dim,
+                                num_heads=h
+                            )
+                        )
+                    else:
+                       attn_list.append( 
+                           CrossAttentionSingleInput(
+                                dim = embed_dim,
+                                num_heads = h)
+                        )
+                i+=1
+            embed_dim = embed_dim * self.encoder.attn_multiplier
+        return attn_list
+    
     def _predict(self, x: torch.Tensor):
-        print(f"X predict entry:{x.shape}")
+        
         q = x[:, : self.num_q, :]
 
         class_logits = self.class_head(q)
@@ -65,10 +105,14 @@ class EoMT(nn.Module):
         x = x.transpose(1, 2).reshape(
             x.shape[0], -1, *self.encoder.grid_size
         )
+        mask_features = self.mask_head(q)  # (B, Q, C)
+        upscaled = self.upscale(x)  # (B, C, H, W)
 
-        mask_logits = torch.einsum(
-            "bqc, bchw -> bqhw", self.mask_head(q), self.upscale(x)
-        )
+        B, Q, _ = mask_features.shape
+        mask_logits = torch.matmul(
+            mask_features, 
+            upscaled.flatten(2)  # (B, C, H*W)
+        ).view(B, Q, *upscaled.shape[-2:])  # (B, Q, H, W)       
 
         return mask_logits, class_logits
 
@@ -83,50 +127,39 @@ class EoMT(nn.Module):
 
         for i, block in enumerate(self.encoder.blocks):
             if i == len(self.encoder.blocks) - self.num_blocks:
-                print("X before concat",x.shape)
+               
                 if len(x.shape) > 3:
                     x = x.flatten(1,2)
                 x = torch.cat(
-                    (self.q.weight[None, :, :].expand(x.shape[0], -1, -1), x), dim=1
-                )
-                print("X after concat",x.shape)
-                
-
+                    (self.q[None, :, :].expand(x.shape[0], -1, -1), x), dim=1
+                )                
             if (
-                # self.masked_attn_enabled and
                 i >= len(self.encoder.blocks) - self.num_blocks
             ):
                 mask_logits, class_logits = self._predict(self.encoder.norm(x))
                 mask_logits_per_layer.append(mask_logits)
                 class_logits_per_layer.append(class_logits)
-                
-                print("X pre attn",x.shape)
-                
+             
                 # Cross attention between queries and embeddings
-                x = self.attn(self.encoder.norm(x)) # does every variant have a similar norm layer?
-                
-                print("X post attn",x.shape)
-                
+                new_x = self.attn[i - len(self.encoder.blocks)](self.encoder.norm(x))
+                x = x + self.dp(self.ls_list[i - len(self.encoder.blocks)](new_x))
                 # Queries dislodged from embeddings
                 q = x[:, : self.num_q, :]
                 x = x[:, self.num_q :, :]
-              
-            
+               
+                q = self.encoder.q_mlp(block,q)
             # encoder blocks always process embeddings without queries
             if len(x.shape) != orig_x_dims:
                 x = x.reshape(x.shape[0], self.encoder.grid_size[0], self.encoder.grid_size[1], -1).transpose(1,2)
-            x = block(x)
+            x = self.encoder.run_block(block,x,i)
             
             # queries re-added for next iter
-            if q  is not None:
+            if q is not None:
                 if len(x.shape) > 3:
                     x = x.flatten(1,2)
-                print("X before re-concat", x.shape)
-                print("Q before re-concat", q.shape)
                 x = torch.cat(
                         (q, x), dim=1
                     )
-                print("X after re-concat", x.shape)
             
         mask_logits, class_logits = self._predict(self.encoder.norm(x))
         mask_logits_per_layer.append(mask_logits)
