@@ -1,4 +1,4 @@
-# Your ViT is Secretly an Image Segmentation Model  
+# Which ViT to favor for Image Segmentation Model  
 
 This code is adapted from the [📄 Paper](https://arxiv.org/abs/2503.19108) to use it as a common framework for comparing different variants of Vision Transformers for the task of image segmentation.
 
